@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo 2D - Colete as Gemas</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+    <style>
+        body {
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        #gameContainer {
+            display: none; /* Começa escondido */
+        }
+
+        #gameArea {
+            width: 800px;
+            height: 600px;
+            background-color: #d4e7f5;
+            border: 3px solid #0d6efd;
+            border-radius: 10px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        #player {
+            position: absolute;
+            bottom: 10px;
+            font-size: 40px;
+            color: #343a40;
+            transition: left 0.1s linear; /* Movimento mais suave */
+        }
+
+        .item {
+            position: absolute;
+            font-size: 28px;
+        }
+
+        .gem {
+            color: #198754; /* Verde */
+        }
+
+        .bomb {
+            color: #dc3545; /* Vermelho */
+        }
+
+        #hud {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container text-center">
+
+        <div id="initialScreen">
+            <h1 class="display-4 mb-4">💎 Colete as Gemas 💣</h1>
+            <p class="lead">Use as setas ⬅️ e ➡️ para mover o carrinho e coletar as gemas. Evite as bombas!</p>
+            <div class="input-group mb-3 mx-auto" style="max-width: 400px;">
+                <span class="input-group-text">Nome do Jogador:</span>
+                <input type="text" id="playerNameInput" class="form-control" placeholder="Herói das Gemas" value="Herói das Gemas">
+            </div>
+            <button id="startGameBtn" class="btn btn-primary btn-lg">Iniciar Jogo</button>
+        </div>
+
+        <div id="gameContainer">
+            <div id="hud" class="d-flex justify-content-between p-2 bg-light rounded-top">
+                <span id="playerNameDisplay">Jogador:</span>
+                <span id="scoreDisplay">Pontos: 0</span>
+            </div>
+            <div id="gameArea">
+                <div id="player">
+                    <i class="fas fa-shopping-basket"></i>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="modal fade" id="gameOverModal" tabindex="-1" aria-labelledby="gameOverModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content text-center">
+          <div class="modal-header">
+            <h5 class="modal-title w-100" id="gameOverModalLabel">Fim de Jogo!</h5>
+          </div>
+          <div class="modal-body">
+            <p class="lead">Você pegou uma bomba! 💥</p>
+            <h3 id="finalScore">Sua pontuação final foi: 0</h3>
+          </div>
+          <div class="modal-footer justify-content-center">
+            <button type="button" class="btn btn-primary" onclick="location.reload()">Jogar Novamente</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // ELEMENTOS DO DOM
+        const initialScreen = document.getElementById('initialScreen');
+        const gameContainer = document.getElementById('gameContainer');
+        const startGameBtn = document.getElementById('startGameBtn');
+        const playerNameInput = document.getElementById('playerNameInput');
+        const playerNameDisplay = document.getElementById('playerNameDisplay');
+        
+        const gameArea = document.getElementById('gameArea');
+        const player = document.getElementById('player');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const finalScore = document.getElementById('finalScore');
+
+        // VARIÁVEIS DO JOGO
+        let score = 0;
+        let playerName = "";
+        let gameInterval;
+        let isGameOver = false;
+        const playerSpeed = 20; // pixels por movimento
+        const itemSpeed = 5; // velocidade de queda dos itens
+        const itemCreationFrequency = 40; // a cada x frames, chance de criar item
+
+        // INICIALIZAÇÃO
+        startGameBtn.addEventListener('click', startGame);
+        document.addEventListener('keydown', handleKeyDown);
+
+        // FUNÇÃO PARA INICIAR O JOGO
+        function startGame() {
+            playerName = playerNameInput.value || "Jogador";
+            playerNameDisplay.textContent = `Jogador: ${playerName}`;
+            initialScreen.style.display = 'none';
+            gameContainer.style.display = 'block';
+
+            // Reseta o estado do jogo
+            score = 0;
+            isGameOver = false;
+            updateScore();
+            player.style.left = `${(gameArea.offsetWidth / 2) - (player.offsetWidth / 2)}px`;
+
+            // Inicia o loop principal do jogo
+            gameInterval = setInterval(gameLoop, 1000 / 60); // ~60 FPS
+        }
+
+        // LOOP PRINCIPAL DO JOGO
+        let frameCount = 0;
+        function gameLoop() {
+            if (isGameOver) return;
+
+            frameCount++;
+            // Cria um novo item (gema ou bomba) de tempos em tempos
+            if (frameCount % itemCreationFrequency === 0) {
+                createItem();
+            }
+
+            // Move os itens existentes
+            moveItems();
+            
+            // Verifica colisões
+            checkCollisions();
+        }
+
+        // CRIA UM ITEM (GEMA OU BOMBA)
+        function createItem() {
+            const item = document.createElement('div');
+            item.classList.add('item');
+
+            const isBomb = Math.random() < 0.2; // 20% de chance de ser uma bomba
+            if (isBomb) {
+                item.classList.add('bomb');
+                item.innerHTML = '<i class="fas fa-bomb"></i>';
+            } else {
+                item.classList.add('gem');
+                item.innerHTML = '<i class="fas fa-gem"></i>';
+            }
+
+            // Define a posição horizontal aleatória
+            const maxLeft = gameArea.offsetWidth - 30;
+            item.style.left = `${Math.random() * maxLeft}px`;
+            item.style.top = `-30px`; // Começa fora da tela, no topo
+
+            gameArea.appendChild(item);
+        }
+
+        // MOVE OS ITENS PARA BAIXO
+        function moveItems() {
+            const items = document.querySelectorAll('.item');
+            items.forEach(item => {
+                const currentTop = parseInt(item.style.top);
+                item.style.top = `${currentTop + itemSpeed}px`;
+
+                // Remove o item se ele sair da tela
+                if (currentTop > gameArea.offsetHeight) {
+                    item.remove();
+                }
+            });
+        }
+        
+        // CONTROLA O JOGADOR
+        function handleKeyDown(event) {
+            if (isGameOver) return;
+            
+            const playerLeft = parseInt(player.style.left);
+            
+            if (event.key === 'ArrowLeft') {
+                const newLeft = Math.max(0, playerLeft - playerSpeed); // Não deixa sair pela esquerda
+                player.style.left = `${newLeft}px`;
+            } else if (event.key === 'ArrowRight') {
+                const newLeft = Math.min(gameArea.offsetWidth - player.offsetWidth, playerLeft + playerSpeed); // Não deixa sair pela direita
+                player.style.left = `${newLeft}px`;
+            }
+        }
+        
+        // VERIFICA COLISÕES
+        function checkCollisions() {
+            const playerRect = player.getBoundingClientRect();
+            const items = document.querySelectorAll('.item');
+
+            items.forEach(item => {
+                const itemRect = item.getBoundingClientRect();
+                
+                // Lógica de detecção de colisão (AABB - Axis-Aligned Bounding Box)
+                if (
+                    playerRect.left < itemRect.right &&
+                    playerRect.right > itemRect.left &&
+                    playerRect.top < itemRect.bottom &&
+                    playerRect.bottom > itemRect.top
+                ) {
+                    // Colisão detectada!
+                    if (item.classList.contains('gem')) {
+                        score++;
+                        updateScore();
+                        item.remove(); // Remove a gema coletada
+                    } else if (item.classList.contains('bomb')) {
+                        gameOver();
+                    }
+                }
+            });
+        }
+        
+        // ATUALIZA A PONTUAÇÃO NA TELA
+        function updateScore() {
+            scoreDisplay.textContent = `Pontos: ${score}`;
+        }
+        
+        // FINALIZA O JOGO
+        function gameOver() {
+            isGameOver = true;
+            clearInterval(gameInterval);
+            
+            // Mostra o modal de Game Over
+            finalScore.textContent = `Sua pontuação final: ${score}`;
+            const modal = new bootstrap.Modal(document.getElementById('gameOverModal'));
+            modal.show();
+        }
+
+    </script>
+</body>
+</html>
